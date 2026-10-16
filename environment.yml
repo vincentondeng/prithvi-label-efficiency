@@ -1,0 +1,10 @@
+name: prithvi-le
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - gdal
+  - torchvision
+  - pytorch
+  - terratorch
+prefix: /opt/homebrew/Caskroom/miniforge/base/envs/prithvi-le

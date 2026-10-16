@@ -1,0 +1,13 @@
+# data and model files (never commit these)
+data/
+checkpoints/
+outputs/
+lightning_logs/
+*.ckpt
+*.pt
+*.tif
+
+# python and system
+__pycache__/
+.ipynb_checkpoints/
+.DS_Store
