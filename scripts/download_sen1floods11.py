@@ -48,7 +48,7 @@ def download(url, dest, retries=3):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--splits-dir", default="data/splits")
+    p.add_argument("--splits-dir", default="splits")
     p.add_argument("--root", default="data/sen1floods11")
     p.add_argument("--limit", type=int, default=None, help="max chips per split (for testing)")
     args = p.parse_args()
