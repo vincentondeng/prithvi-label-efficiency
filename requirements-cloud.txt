@@ -1,0 +1,6 @@
+# Pins for Kaggle/Colab-style environments that already ship a CUDA build of PyTorch.
+# Do NOT list torch/torchvision here: the cloud image provides a matching CUDA build.
+# torchgeo must stay at 0.8.1: terratorch 1.2.11 fails to import with torchgeo 0.10.1.
+terratorch==1.2.11
+torchgeo==0.8.1
+numpy==2.4.6
