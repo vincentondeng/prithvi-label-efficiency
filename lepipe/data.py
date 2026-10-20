@@ -29,11 +29,17 @@ def read_split(csv_path):
 
 
 class Sen1Floods11(Dataset):
-    """Returns {'image': (6,H,W) float32 normalised, 'label': (H,W) int64 in {0,1,255}, 'name'}."""
+    """Returns {'image': (6,H,W) float32 normalised, 'label': (H,W) int64 in {0,1,255}, 'name'}.
 
-    def __init__(self, root, pairs):
+    mask_empty: pixels whose six bands are all exactly zero (no imagery) get label 255,
+    even if the hand label says 0 or 1. Such pixels exist in a few chips (e.g. 50k water-labelled
+    pixels with no imagery in test chip Paraguay_34417).
+    """
+
+    def __init__(self, root, pairs, mask_empty=True):
         self.root = Path(root)
         self.pairs = list(pairs)
+        self.mask_empty = mask_empty
 
     def __len__(self):
         return len(self.pairs)
@@ -41,12 +47,15 @@ class Sen1Floods11(Dataset):
     def __getitem__(self, i):
         s2_name, label_name = self.pairs[i]
         ds = gdal.Open(str(self.root / "S2Hand" / s2_name))
-        img = np.stack([ds.GetRasterBand(b).ReadAsArray() for b in FILE_BANDS]).astype(np.float32)
+        raw = np.stack([ds.GetRasterBand(b).ReadAsArray() for b in FILE_BANDS]).astype(np.float32)
         ds = None
-        img = (img - MEAN[:, None, None]) / STD[:, None, None]
 
         ds = gdal.Open(str(self.root / "LabelHand" / label_name))
         label = ds.ReadAsArray().astype(np.int64)
         ds = None
         label[label == -1] = IGNORE_INDEX
+        if self.mask_empty:
+            label[(raw == 0).all(axis=0)] = IGNORE_INDEX
+
+        img = (raw - MEAN[:, None, None]) / STD[:, None, None]
         return {"image": torch.from_numpy(img), "label": torch.from_numpy(label), "name": s2_name}
