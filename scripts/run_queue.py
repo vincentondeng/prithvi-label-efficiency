@@ -11,8 +11,9 @@ from pathlib import Path
 
 STAGES = {
     1: dict(fractions=[0.10, 1.0], seeds=range(0, 5)),
-    2: dict(fractions=[0.25, 0.50, 0.05, 0.01], seeds=range(0, 5)),
-    3: dict(fractions=[0.10, 0.05, 0.01], seeds=range(5, 10)),
+    2: dict(fractions=[0.01, 0.05], seeds=range(0, 5)),
+    3: dict(fractions=[0.25, 0.50], seeds=range(0, 5)),
+    4: dict(fractions=[0.10, 0.05, 0.01], seeds=range(5, 10)),
 }
 INITS = ["pretrained", "scratch"]
 

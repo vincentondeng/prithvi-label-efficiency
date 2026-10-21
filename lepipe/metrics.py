@@ -21,4 +21,5 @@ class ConfusionMeter:
         iou = tp / (tp + fp + fn).clamp(min=1)
         return {"iou_water": iou[1].item(), "iou_land": iou[0].item(), "miou": iou.mean().item(),
                 "f1_water": (2 * tp[1] / (2 * tp[1] + fp[1] + fn[1]).clamp(min=1)).item(),
-                "acc": (tp.sum() / cm.sum().clamp(min=1)).item()}
+                "acc": (tp.sum() / cm.sum().clamp(min=1)).item(),
+                "cm": self.cm.tolist()}
