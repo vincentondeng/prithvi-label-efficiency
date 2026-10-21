@@ -10,16 +10,16 @@ BUCKET="https://storage.googleapis.com/sen1floods11/v1.1/splits/flood_handlabele
 
 cd "$REPO_DIR"
 
-echo "== 1/6 Installing pinned packages"
+echo "[${SECONDS}s] == 1/6 Installing pinned packages"
 if ! pip install -q -r requirements-cloud.txt > /tmp/pip_install.log 2>&1; then
   echo "pip install failed. Last lines of the log:"; tail -n 30 /tmp/pip_install.log; exit 1
 fi
 echo "   done (warnings about unrelated preinstalled packages are expected)"
 
-echo "== 2/6 GPUs"
+echo "[${SECONDS}s] == 2/6 GPUs"
 nvidia-smi -L || { echo "No GPU found: enable a GPU accelerator in the notebook settings."; exit 1; }
 
-echo "== 3/6 Import check (fresh process)"
+echo "[${SECONDS}s] == 3/6 Import check (fresh process)"
 python - << 'PY'
 import importlib.metadata as md, sys
 import torch
@@ -32,20 +32,21 @@ for p in ["terratorch", "torch", "torchvision", "torchgeo", "lightning", "numpy"
 print("   GPU:", torch.cuda.get_device_name(0), "| count:", torch.cuda.device_count())
 PY
 
-echo "== 4/6 Split files"
+echo "[${SECONDS}s] == 4/6 Split files"
 mkdir -p "$SPLITS_DIR"
 for f in flood_train_data flood_valid_data flood_test_data flood_bolivia_data; do
   curl -sf -o "$SPLITS_DIR/$f.csv" "$BUCKET/$f.csv" || { echo "failed to fetch $f.csv"; exit 1; }
 done
 wc -l "$SPLITS_DIR"/*.csv
 
-echo "== 5/6 Chips and labels"
+echo "[${SECONDS}s] == 5/6 Chips and labels"
 python scripts/download_sen1floods11.py --splits-dir "$SPLITS_DIR" --root "$DATA_ROOT" 2>&1 | tail -n 3
 echo "   S2 chips:     $(ls "$DATA_ROOT/S2Hand" | wc -l)  (expect 446)"
 echo "   label chips:  $(ls "$DATA_ROOT/LabelHand" | wc -l)  (expect 446)"
 du -sh "$DATA_ROOT"
 
-echo "== 6/6 Recording environment"
+echo "[${SECONDS}s] == 6/6 Recording environment"
 pip freeze > /kaggle/working/env_versions.txt
 echo "   wrote /kaggle/working/env_versions.txt"
 echo "== Setup complete"
+echo "   total setup time: ${SECONDS}s"

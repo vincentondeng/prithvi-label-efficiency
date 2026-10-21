@@ -1,11 +1,12 @@
-"""Download the Sen1Floods11 hand-labeled Sentinel-2 chips and labels
-listed in the split CSVs. Standard library only; safe to re-run."""
+"""Download the Sen1Floods11 hand-labeled Sentinel-2 chips and labels listed in the split CSVs.
+Standard library only; parallel; safe to re-run."""
 import argparse
 import csv
 import sys
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 BASE = "https://storage.googleapis.com/sen1floods11/v1.1/data/flood_events/HandLabeled"
@@ -40,7 +41,7 @@ def download(url, dest, retries=3):
                 raise IOError(f"size mismatch: expected {expected}, got {got}")
             tmp.rename(dest)
             return "downloaded"
-        except (urllib.error.URLError, IOError) as e:
+        except (urllib.error.URLError, IOError):
             if attempt == retries:
                 raise
             time.sleep(2 * attempt)
@@ -48,30 +49,42 @@ def download(url, dest, retries=3):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--splits-dir", default="splits")
+    p.add_argument("--splits-dir", default="data/splits")
     p.add_argument("--root", default="data/sen1floods11")
     p.add_argument("--limit", type=int, default=None, help="max chips per split (for testing)")
+    p.add_argument("--workers", type=int, default=8)
     args = p.parse_args()
 
     root = Path(args.root)
     (root / "S2Hand").mkdir(parents=True, exist_ok=True)
     (root / "LabelHand").mkdir(parents=True, exist_ok=True)
 
-    failed = []
+    tasks = []
     for split in SPLITS:
         pairs = list(chip_files(Path(args.splits_dir) / f"flood_{split}_data.csv"))
         if args.limit:
             pairs = pairs[: args.limit]
-        for i, (s2, label) in enumerate(pairs, 1):
-            for folder, name in (("S2Hand", s2), ("LabelHand", label)):
-                try:
-                    status = download(f"{BASE}/{folder}/{name}", root / folder / name)
-                except Exception as e:
-                    failed.append((folder, name, str(e)))
-                    status = "FAILED"
-                if status != "skipped":
-                    print(f"[{split} {i}/{len(pairs)}] {folder}/{name}: {status}")
-    print(f"\nDone. Failed: {len(failed)}")
+        for s2, label in pairs:
+            tasks.append(("S2Hand", s2))
+            tasks.append(("LabelHand", label))
+
+    def work(task):
+        folder, name = task
+        return download(f"{BASE}/{folder}/{name}", root / folder / name)
+
+    failed, n_new = [], 0
+    with ThreadPoolExecutor(max_workers=args.workers) as ex:
+        futures = {ex.submit(work, t): t for t in tasks}
+        for i, fut in enumerate(as_completed(futures), 1):
+            try:
+                if fut.result() != "skipped":
+                    n_new += 1
+            except Exception as e:
+                failed.append((futures[fut], str(e)))
+            if i % 100 == 0:
+                print(f"  {i}/{len(tasks)} files processed ({n_new} downloaded)", flush=True)
+
+    print(f"\nDone. Failed: {len(failed)} (downloaded {n_new} new files, {len(tasks)} in total)")
     for item in failed:
         print("  ", item)
     sys.exit(1 if failed else 0)
