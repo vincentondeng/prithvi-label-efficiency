@@ -19,6 +19,8 @@ INITS = ["pretrained", "scratch"]
 
 p = argparse.ArgumentParser()
 p.add_argument("--stages", type=int, nargs="+", default=[1])
+p.add_argument("--inits", nargs="+", default=["pretrained", "scratch"], choices=["pretrained", "scratch"])
+p.add_argument("--lr-encoder", type=float, default=None, help="override the encoder learning rate")
 p.add_argument("--fractions", type=float, nargs="*", default=None, help="restrict to these fractions")
 p.add_argument("--steps", type=int, default=4000)
 p.add_argument("--batch-size", type=int, default=4)
@@ -37,7 +39,7 @@ for st in args.stages:
     fracs = [f for f in cfg["fractions"] if args.fractions is None or f in args.fractions]
     for seed in cfg["seeds"]:
         for frac in fracs:
-            for init in INITS:
+            for init in args.inits:
                 jobs.append((init, frac, seed))
 
 out = Path(args.out_dir)
@@ -75,6 +77,8 @@ while pending or slots:
             cmd = [sys.executable, "scripts/train.py", "--init", init, "--fraction", str(frac), "--seed", str(seed),
                    "--steps", str(args.steps), "--batch-size", str(args.batch_size), "--eval-every", "0",
                    "--root", args.root, "--splits-dir", args.splits_dir, "--out-dir", args.out_dir]
+            if args.lr_encoder is not None:
+                cmd += ["--lr-encoder", str(args.lr_encoder)]
             proc = subprocess.Popen(cmd, env=dict(os.environ, CUDA_VISIBLE_DEVICES=str(gpu)),
                                     stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             slots[gpu] = (proc, job, time.time(), log)
