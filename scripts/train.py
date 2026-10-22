@@ -77,19 +77,30 @@ def augment(x, y):
 
 @torch.no_grad()
 def evaluate(model, split):
+    """Evaluate one split. Chips are grouped by flood event (filename prefix) so that
+    per-event confusion matrices are stored; the split-level metrics are computed from the
+    summed confusion matrix, i.e. over all pixels of all chips."""
     pairs = read_split(Path(args.splits_dir) / f"flood_{split}_data.csv")
     if args.max_eval_chips:
         pairs = pairs[: args.max_eval_chips]
-    dl = DataLoader(Sen1Floods11(args.root, pairs), batch_size=4, shuffle=False, num_workers=args.workers)
-    meter = ConfusionMeter()
+    groups = {}
+    for pr in pairs:
+        groups.setdefault(Path(pr[0]).name.split("_")[0], []).append(pr)
     model.eval()
-    for b in dl:
-        x, y = b["image"].to(dev), b["label"].to(dev)
-        with torch.autocast(device_type=dev.type, dtype=torch.float16, enabled=use_amp):
-            logits = model(x)
-        meter.update(logits.float(), y)
+    total, per_event = ConfusionMeter(), {}
+    for event, ev_pairs in sorted(groups.items()):
+        dl = DataLoader(Sen1Floods11(args.root, ev_pairs), batch_size=4, shuffle=False,
+                        num_workers=args.workers)
+        meter = ConfusionMeter()
+        for b in dl:
+            x, y = b["image"].to(dev), b["label"].to(dev)
+            with torch.autocast(device_type=dev.type, dtype=torch.float16, enabled=use_amp):
+                logits = model(x)
+            meter.update(logits.float(), y)
+        total.cm += meter.cm
+        per_event[event] = {"n_chips": len(ev_pairs), **meter.compute()}
     model.train()
-    return meter.compute()
+    return {**total.compute(), "events": per_event}
 
 
 # ---- model / optimiser ----------------------------------------------------------------
