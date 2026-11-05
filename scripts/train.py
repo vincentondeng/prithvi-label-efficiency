@@ -35,6 +35,9 @@ p.add_argument("--splits-dir", default="data/splits")
 p.add_argument("--root", default="data/sen1floods11")
 p.add_argument("--subsets", default="subsets/label_subsets.json")
 p.add_argument("--out-dir", default="results")
+p.add_argument("--exclude-events", nargs="*", default=[],
+               help="drop these flood events (filename prefixes) from the training pool; their training-split "
+                    "chips are evaluated as the extra split 'heldout_train'")
 p.add_argument("--device", default=None)
 p.add_argument("--workers", type=int, default=2)
 args = p.parse_args()
@@ -48,7 +51,8 @@ np.random.seed(args.seed)
 # ---- data -----------------------------------------------------------------------------
 all_train = read_split(Path(args.splits_dir) / "flood_train_data.csv")
 by_name = {s2: (s2, lab) for s2, lab in all_train}
-chosen = subsets.get_subset(args.subsets, args.seed, args.fraction)
+chosen = subsets.get_subset(args.subsets, args.seed, args.fraction, exclude_events=args.exclude_events)
+assert not any(subsets.event_of(n) in set(args.exclude_events) for n in chosen), "excluded event in training subset"
 train_pairs = [by_name[n] for n in chosen]
 train_ds = Sen1Floods11(args.root, train_pairs)
 gen = torch.Generator()
@@ -76,18 +80,19 @@ def augment(x, y):
 
 
 @torch.no_grad()
-def evaluate(model, split):
-    """Evaluate one split. Chips are grouped by flood event (filename prefix) so that
-    per-event confusion matrices are stored; the split-level metrics are computed from the
-    summed confusion matrix, i.e. over all pixels of all chips."""
-    pairs = read_split(Path(args.splits_dir) / f"flood_{split}_data.csv")
+def evaluate(model, split, pairs=None, per_chip=False):
+    """Evaluate a split (or an explicit list of pairs). Chips are grouped by flood event (filename prefix);
+    per-event confusion matrices are always stored, per-chip matrices when per_chip=True. Split-level metrics
+    come from the summed confusion matrix, i.e. over all pixels of all chips."""
+    if pairs is None:
+        pairs = read_split(Path(args.splits_dir) / f"flood_{split}_data.csv")
     if args.max_eval_chips:
         pairs = pairs[: args.max_eval_chips]
     groups = {}
     for pr in pairs:
-        groups.setdefault(Path(pr[0]).name.split("_")[0], []).append(pr)
+        groups.setdefault(subsets.event_of(pr[0]), []).append(pr)
     model.eval()
-    total, per_event = ConfusionMeter(), {}
+    total, per_event, chips = ConfusionMeter(), {}, {}
     for event, ev_pairs in sorted(groups.items()):
         dl = DataLoader(Sen1Floods11(args.root, ev_pairs), batch_size=4, shuffle=False,
                         num_workers=args.workers)
@@ -96,11 +101,20 @@ def evaluate(model, split):
             x, y = b["image"].to(dev), b["label"].to(dev)
             with torch.autocast(device_type=dev.type, dtype=torch.float16, enabled=use_amp):
                 logits = model(x)
-            meter.update(logits.float(), y)
+            logits = logits.float()
+            meter.update(logits, y)
+            if per_chip:
+                for i, name in enumerate(b["name"]):
+                    cm = ConfusionMeter()
+                    cm.update(logits[i:i + 1], y[i:i + 1])
+                    chips[Path(name).name.replace("_S2Hand.tif", "")] = cm.cm.tolist()
         total.cm += meter.cm
         per_event[event] = {"n_chips": len(ev_pairs), **meter.compute()}
     model.train()
-    return {**total.compute(), "events": per_event}
+    out = {**total.compute(), "events": per_event}
+    if per_chip:
+        out["chips"] = chips
+    return out
 
 
 # ---- model / optimiser ----------------------------------------------------------------
@@ -150,7 +164,10 @@ for step, batch in zip(range(1, args.steps + 1), batches()):
 train_seconds = time.time() - t0
 
 # ---- final evaluation (last checkpoint, no selection) ----------------------------------
-final = {s: evaluate(model, s) for s in ["valid", "test", "bolivia"]}
+final = {s: evaluate(model, s, per_chip=True) for s in ["valid", "test", "bolivia"]}
+if args.exclude_events:
+    held = [pr for pr in all_train if subsets.event_of(pr[0]) in set(args.exclude_events)]
+    final["heldout_train"] = evaluate(model, "heldout_train", pairs=held, per_chip=True)
 for s, m in final.items():
     print(f"FINAL {s:8s} iou_water={m['iou_water']:.3f} miou={m['miou']:.3f} f1_water={m['f1_water']:.3f}")
 
