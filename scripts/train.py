@@ -38,6 +38,8 @@ p.add_argument("--out-dir", default="results")
 p.add_argument("--exclude-events", nargs="*", default=[],
                help="drop these flood events (filename prefixes) from the training pool; their training-split "
                     "chips are evaluated as the extra split 'heldout_train'")
+p.add_argument("--head", choices=["decoder", "linear"], default="decoder", help="segmentation head")
+p.add_argument("--freeze-encoder", action="store_true", help="train only the head (encoder frozen)")
 p.add_argument("--device", default=None)
 p.add_argument("--workers", type=int, default=2)
 args = p.parse_args()
@@ -118,7 +120,8 @@ def evaluate(model, split, pairs=None, per_chip=False):
 
 
 # ---- model / optimiser ----------------------------------------------------------------
-model = SegModel(pretrained=args.init == "pretrained").to(dev)
+model = SegModel(pretrained=args.init == "pretrained", head=args.head, freeze_encoder=args.freeze_encoder).to(dev)
+n_trainable = model.n_trainable()
 opt = torch.optim.AdamW(model.param_groups(args.lr_encoder, args.lr_decoder), weight_decay=args.weight_decay)
 
 
@@ -132,7 +135,8 @@ def lr_lambda(step):
 sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda)
 scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 print(f"init={args.init} fraction={args.fraction} seed={args.seed} train_chips={len(train_ds)} "
-      f"device={dev} amp={use_amp} steps={args.steps} bs={args.batch_size}")
+      f"device={dev} amp={use_amp} steps={args.steps} bs={args.batch_size} head={args.head} "
+      f"frozen={args.freeze_encoder} trainable_params={n_trainable}")
 
 # ---- train ----------------------------------------------------------------------------
 model.train()
@@ -173,6 +177,7 @@ for s, m in final.items():
 
 result = {
     "config": vars(args), "n_train_chips": len(train_ds), "train_chips": chosen,
+    "n_trainable_params": n_trainable,
     "final": final, "monitor_valid": monitor, "loss_curve": loss_curve,
     "train_seconds": train_seconds, "device": str(dev),
     "peak_gpu_mem_gb": torch.cuda.max_memory_allocated() / 1e9 if dev.type == "cuda" else None,

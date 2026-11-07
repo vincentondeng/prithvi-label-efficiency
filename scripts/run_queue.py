@@ -15,6 +15,7 @@ STAGES = {
     3: dict(fractions=[0.25, 0.50], seeds=range(0, 5)),
     4: dict(fractions=[0.10, 0.05, 0.01], seeds=range(5, 10)),
     5: dict(fractions=[0.10, 0.50, 1.0], seeds=range(0, 5)),   # leave-Africa-out (use with --exclude-events)
+    6: dict(fractions=[0.01, 0.05, 0.10, 1.0], seeds=range(0, 5)),  # frozen-encoder / linear-probe study
 }
 INITS = ["pretrained", "scratch"]
 
@@ -23,6 +24,8 @@ p.add_argument("--stages", type=int, nargs="+", default=[1])
 p.add_argument("--inits", nargs="+", default=["pretrained", "scratch"], choices=["pretrained", "scratch"])
 p.add_argument("--lr-encoder", type=float, default=None, help="override the encoder learning rate")
 p.add_argument("--exclude-events", nargs="*", default=[], help="flood events to drop from the training pool")
+p.add_argument("--head", choices=["decoder", "linear"], default="decoder")
+p.add_argument("--freeze-encoder", action="store_true")
 p.add_argument("--fractions", type=float, nargs="*", default=None, help="restrict to these fractions")
 p.add_argument("--steps", type=int, default=4000)
 p.add_argument("--batch-size", type=int, default=4)
@@ -83,6 +86,10 @@ while pending or slots:
                 cmd += ["--lr-encoder", str(args.lr_encoder)]
             if args.exclude_events:
                 cmd += ["--exclude-events", *args.exclude_events]
+            if args.head != "decoder":
+                cmd += ["--head", args.head]
+            if args.freeze_encoder:
+                cmd += ["--freeze-encoder"]
             proc = subprocess.Popen(cmd, env=dict(os.environ, CUDA_VISIBLE_DEVICES=str(gpu)),
                                     stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             slots[gpu] = (proc, job, time.time(), log)
