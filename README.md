@@ -52,7 +52,7 @@ lepipe/        data loading, label subsets, model (encoder + heads), metrics
 scripts/       download, subset generation, training, baseline, analysis
 splits/        Sen1Floods11 split lists
 subsets/       label subsets for each fraction and seed
-results*/      one JSON per run (config and metrics)
+results*/      one JSON per run (config and metrics); results_lr2e-5/ is a sensitivity check with a lower encoder learning rate
 figures/       figures and summary tables
 ```
 
@@ -61,6 +61,7 @@ figures/       figures and summary tables
 ```bash
 conda env create -f environment.yml && conda activate prithvi-le
 
+mkdir -p data && cp -r splits data/splits           # split lists where the scripts expect them
 python scripts/download_sen1floods11.py            # hand-labelled chips and labels into data/sen1floods11
 python scripts/step4b_make_subsets.py              # label subsets for each fraction and seed
 

@@ -7,4 +7,3 @@ dependencies:
   - torchvision
   - pytorch
   - terratorch
-prefix: /opt/homebrew/Caskroom/miniforge/base/envs/prithvi-le
